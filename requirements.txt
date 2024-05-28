@@ -1,7 +1,7 @@
-pymongo
+aiohttp
 flask
-flask_cors
 python-dotenv
+pymongo
+botbuilder-core
 langchain_openai
 langchain_community
-botbuilder-core

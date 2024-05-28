@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from aiohttp import web
+from flask import Flask, request, jsonify
 from botbuilder.core import BotFrameworkAdapter, BotFrameworkAdapterSettings, TurnContext
 from botbuilder.schema import Activity, ActivityTypes
 from langchain.prompts import PromptTemplate
@@ -45,8 +45,8 @@ vectorstore = AzureCosmosDBVectorSearch(
 
 retriever = vectorstore.as_retriever()
 
-# Aiohttp app for bot adapter
-app = web.Application()
+# Flask app for bot adapter
+app = Flask(__name__)
 
 async def process_message(human_input):
     template = """
@@ -113,13 +113,14 @@ async def process_message(human_input):
     
     return response["answer"]
 
-async def messages(req):
+@app.route("/api/messages", methods=["POST"])
+def messages():
     try:
-        body = await req.json()
+        body = request.json
         logging.info(f"Received request body: {body}")
         activity = Activity().deserialize(body)
         logging.info(f"Deserialized activity: {activity}")
-        auth_header = req.headers.get("Authorization", "")
+        auth_header = request.headers.get("Authorization", "")
 
         if not activity or activity.type != ActivityTypes.message:
             raise TypeError("Invalid activity type or missing activity")
@@ -131,21 +132,19 @@ async def messages(req):
                 response = await process_message(human_input)
                 await turn_context.send_activity(response)
 
-        await adapter.process_activity(activity, auth_header, aux)
-        return web.Response(status=201)
+        adapter.process_activity(activity, auth_header, aux)
+        return jsonify({"status": "success"}), 201
     except Exception as e:
         logging.error(f"Error handling request: {e}")
-        return web.Response(status=500, text=str(e))
+        return jsonify({"error": str(e)}), 500
 
 # Health check endpoint
-async def health_check(request):
-    return web.Response(text="Hello World!")
-
-app.router.add_post("/api/messages", messages)
-app.router.add_get("/", health_check)  # Add health check endpoint
+@app.route("/")
+def health_check():
+    return "Hello World!"
 
 if __name__ == "__main__":
     # Set up logging
     logging.basicConfig(level=logging.INFO)
 
-    web.run_app(app, host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=8000)
