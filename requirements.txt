@@ -1,11 +1,6 @@
-fitz
-pymupdf
 pymongo
 flask
 flask_cors
-docx
-python-docx
-openpyxl
 python-dotenv
 langchain
 langchain_openai

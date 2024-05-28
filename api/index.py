@@ -1,13 +1,10 @@
 import os
-from flask import Flask, request, Response, stream_with_context, jsonify
+from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from flask_cors import CORS, cross_origin
-from docx import Document
-from openpyxl import load_workbook
 
 from langchain.prompts import PromptTemplate
 from langchain.chains import (
-    LLMChain,
     ConversationalRetrievalChain,
 )
 from langchain.memory import ConversationSummaryBufferMemory
