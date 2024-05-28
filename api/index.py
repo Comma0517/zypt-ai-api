@@ -137,7 +137,12 @@ async def messages(req):
         logging.error(f"Error handling request: {e}")
         return web.Response(status=500, text=str(e))
 
+# Health check endpoint
+async def health_check(request):
+    return web.Response(text="Hello World!")
+
 app.router.add_post("/api/messages", messages)
+app.router.add_get("/", health_check)  # Add health check endpoint
 
 if __name__ == "__main__":
     # Set up logging
