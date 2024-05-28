@@ -4,3 +4,4 @@ flask_cors
 python-dotenv
 langchain_openai
 langchain_community
+botbuilder-core
