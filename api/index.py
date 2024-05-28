@@ -113,7 +113,7 @@ async def process_message(human_input):
     
     return response["answer"]
 
-@app.route("/api/messages", methods=["POST"])
+@app.route("/api/message", methods=["POST"])  # Note the singular 'message'
 def messages():
     try:
         body = request.json
