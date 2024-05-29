@@ -12,7 +12,6 @@ from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from langchain_community.vectorstores import AzureCosmosDBVectorSearch
 from pymongo import MongoClient
 import logging
-import time
 
 load_dotenv()
 
@@ -57,7 +56,6 @@ app = Quart(__name__)
 
 async def process_message_async(human_input):
     try:
-        start_time = time.time()
         logging.info(f"Processing message: {human_input}")
 
         template = """
@@ -120,9 +118,7 @@ async def process_message_async(human_input):
             "question": human_input["human_input"],
         })
         
-        end_time = time.time()
         logging.info(f"Generated response: {response['answer']}")
-        logging.info(f"Processing time: {end_time - start_time} seconds")
         return response["answer"]
     except Exception as e:
         logging.error(f"Error processing message: {e}")
