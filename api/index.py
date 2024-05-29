@@ -49,6 +49,8 @@ retriever = vectorstore.as_retriever()
 app = Flask(__name__)
 
 async def process_message(human_input):
+    logging.info(f"Processing message: {human_input}")
+
     template = """
     You're a helpful AI assistant tasked to answer the user's questions.
     You're friendly and you answer extensively with multiple sentences. You prefer to use bullet-points to summarize.
@@ -111,6 +113,7 @@ async def process_message(human_input):
         }
     )
     
+    logging.info(f"Generated response: {response['answer']}")
     return response["answer"]
 
 @app.route("/api/message", methods=["POST"])  # Note the singular 'message'
