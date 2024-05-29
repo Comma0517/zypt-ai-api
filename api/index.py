@@ -25,14 +25,14 @@ adapter = BotFrameworkAdapter(adapter_settings)
 
 # Azure LLM and embeddings setup
 llm = AzureChatOpenAI(
-    openai_api_version="2023-12-01-preview",  # e.g., "2023-12-01-preview"
+    openai_api_version="2023-12-01-preview",
     azure_deployment="gpt",
     temperature=0,
 )
 
 aoai_embeddings = AzureOpenAIEmbeddings(
     azure_deployment="embedding",
-    openai_api_version="2023-12-01-preview",  # e.g., "2023-12-01-preview"
+    openai_api_version="2023-12-01-preview",
     chunk_size=10
 )
 
@@ -125,18 +125,27 @@ def messages():
         logging.info(f"Deserialized activity: {activity}")
         auth_header = request.headers.get("Authorization", "")
 
-        if not activity or activity.type != ActivityTypes.message:
-            logging.error(f"Invalid activity type or missing activity. Body: {body}")
-            raise TypeError(f"Invalid activity type or missing activity. Body: {body}")
-
-        async def aux(turn_context: TurnContext):
-            if activity.type == ActivityTypes.message:
+        if activity.type == ActivityTypes.message:
+            async def aux(turn_context: TurnContext):
                 user_input = activity.text
                 human_input = {"human_input": user_input, "system_prompt": "Your system prompt"}
                 response = await process_message(human_input)
                 await turn_context.send_activity(response)
+            adapter.process_activity(activity, auth_header, aux)
+        elif activity.type == ActivityTypes.conversation_update:
+            logging.info("Handling conversation update activity")
+            # Handle conversation update activity if needed
+            # For example, you might want to send a welcome message to new members added to the conversation
+            async def aux(turn_context: TurnContext):
+                if activity.members_added:
+                    for member in activity.members_added:
+                        if member.id != activity.recipient.id:
+                            await turn_context.send_activity(f"Welcome {member.name or 'User'}!")
+            adapter.process_activity(activity, auth_header, aux)
+        else:
+            logging.error(f"Invalid activity type or missing activity. Body: {body}")
+            raise TypeError("Invalid activity type or missing activity")
 
-        adapter.process_activity(activity, auth_header, aux)
         return jsonify({"status": "success"}), 201
     except Exception as e:
         logging.error(f"Error handling request: {e}")
