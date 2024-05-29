@@ -1,7 +1,7 @@
 import os
 import asyncio
 from dotenv import load_dotenv
-from quart import Quart, request, jsonify
+from flask import Flask, request, jsonify
 from botbuilder.core import BotFrameworkAdapter, BotFrameworkAdapterSettings, TurnContext
 from botbuilder.schema import Activity, ActivityTypes
 from langchain.prompts import PromptTemplate
@@ -42,7 +42,7 @@ aoai_embeddings = AzureOpenAIEmbeddings(
     chunk_size=10
 )
 
-client = MongoClient(CONNECTION_STRING)
+client: MongoClient = MongoClient(CONNECTION_STRING)
 collection = client['mydatabase']['mycontainer']
 
 vectorstore = AzureCosmosDBVectorSearch(
@@ -51,10 +51,10 @@ vectorstore = AzureCosmosDBVectorSearch(
 
 retriever = vectorstore.as_retriever()
 
-# Quart app for bot adapter
-app = Quart(__name__)
+# Flask app for bot adapter
+app = Flask(__name__)
 
-async def process_message_async(human_input):
+def process_message_sync(human_input):
     try:
         logging.info(f"Processing message: {human_input}")
 
@@ -113,7 +113,7 @@ async def process_message_async(human_input):
             callbacks=[StreamingStdOutCallbackHandler()],
         )
 
-        response = await qa.invoke_async({
+        response = qa.invoke({
             "chat_history": "",
             "question": human_input["human_input"],
         })
@@ -124,31 +124,35 @@ async def process_message_async(human_input):
         logging.error(f"Error processing message: {e}")
         return "Sorry, I encountered an error processing your request."
 
-@app.route("/api/message", methods=["POST"])  # Note the singular 'message'
-async def message():
+@app.route("/api/message", methods=["POST"])
+def messages():
     try:
-        body = await request.get_json()
+        body = request.json
         logging.info(f"Received request body: {body}")
         activity = Activity().deserialize(body)
         logging.info(f"Deserialized activity: {activity}")
         auth_header = request.headers.get("Authorization", "")
 
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         if activity.type == ActivityTypes.message:
             async def aux(turn_context: TurnContext):
                 user_input = activity.text
-                human_input = {"human_input": user_input, "system_prompt": ""}
-                response = await process_message_async(human_input)
+                human_input = {"human_input": user_input, "system_prompt": "Your system prompt"}
+                response = process_message_sync(human_input)
                 await turn_context.send_activity(response)
-            await adapter.process_activity(activity, auth_header, aux)
+            loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         elif activity.type == ActivityTypes.conversation_update:
             logging.info("Handling conversation update activity")
             async def aux(turn_context: TurnContext):
                 if activity.members_added:
                     for member in activity.members_added:
                         if member.id != activity.recipient.id:
-                            await turn_context.send_activity(f"Welcome {member.name or ''}!")
-            await adapter.process_activity(activity, auth_header, aux)
+                            await turn_context.send_activity(f"Welcome {member.name or 'User'}!")
+            loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         else:
+            logging.error(f"Invalid activity type or missing activity. Body: {body}")
             raise TypeError("Invalid activity type or missing activity")
 
         return jsonify({"status": "success"}), 201
@@ -158,7 +162,7 @@ async def message():
 
 # Health check endpoint
 @app.route("/")
-async def health_check():
+def health_check():
     return "Hello World!"
 
 if __name__ == "__main__":
