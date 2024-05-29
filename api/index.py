@@ -54,7 +54,7 @@ retriever = vectorstore.as_retriever()
 # Flask app for bot adapter
 app = Flask(__name__)
 
-async def process_message(human_input):
+def process_message_sync(human_input):
     try:
         logging.info(f"Processing message: {human_input}")
 
@@ -113,7 +113,7 @@ async def process_message(human_input):
             callbacks=[StreamingStdOutCallbackHandler()],
         )
 
-        response = await qa.invoke({
+        response = qa.invoke({
             "chat_history": "",
             "question": human_input["human_input"],
         })
@@ -140,7 +140,7 @@ def messages():
             async def aux(turn_context: TurnContext):
                 user_input = activity.text
                 human_input = {"human_input": user_input, "system_prompt": "Your system prompt"}
-                response = await process_message(human_input)
+                response = process_message_sync(human_input)
                 await turn_context.send_activity(response)
             loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         elif activity.type == ActivityTypes.conversation_update:
