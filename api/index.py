@@ -16,17 +16,12 @@ import logging
 load_dotenv()
 
 # Environment variables
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+os.environ["AZURE_OPENAI_ENDPOINT"] = os.getenv("AZURE_OPENAI_ENDPOINT")
+os.environ["AZURE_OPENAI_API_KEY"] = os.getenv("AZURE_OPENAI_API_KEY")
 CONNECTION_STRING = os.getenv("DB_CONNECTION_STRING")
-MICROSOFT_APP_ID = os.getenv("MICROSOFT_APP_ID")
-MICROSOFT_APP_PASSWORD = os.getenv("MICROSOFT_APP_PASSWORD")
-
-if not all([AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, CONNECTION_STRING, MICROSOFT_APP_ID, MICROSOFT_APP_PASSWORD]):
-    raise ValueError("One or more environment variables are missing")
 
 # Bot and adapter settings
-adapter_settings = BotFrameworkAdapterSettings(MICROSOFT_APP_ID, MICROSOFT_APP_PASSWORD)
+adapter_settings = BotFrameworkAdapterSettings(os.getenv("MICROSOFT_APP_ID"), os.getenv("MICROSOFT_APP_PASSWORD"))
 adapter = BotFrameworkAdapter(adapter_settings)
 
 # Azure LLM and embeddings setup
@@ -55,84 +50,74 @@ retriever = vectorstore.as_retriever()
 app = Flask(__name__)
 
 async def process_message(human_input):
-    try:
-        logging.info(f"Processing message: {human_input}")
+    logging.info(f"Processing message: {human_input}")
 
-        template = """
-        You're a helpful AI assistant tasked to answer the user's questions.
-        You're friendly and you answer extensively with multiple sentences. You prefer to use bullet-points to summarize.
-        
-        CHAT HISTORY: 
-        {chat_history}
-        
-        QUESTION:
-        {question}
-        
-        YOUR ANSWER:
-        """
+    template = """
+    You're a helpful AI assistant tasked to answer the user's questions.
+    You're friendly and you answer extensively with multiple sentences. You prefer to use bullet-points to summarize.
+    
+    CHAT HISTORY: 
+    {chat_history}
+    
+    QUESTION:
+    {question}
+    
+    YOUR ANSWER:
+    """
 
-        system_prompt_template = """
-        You're a helpful AI assistant tasked to answer the user's questions.  
-        If you don't know the answer, don't say that you don't know, try to make up an answer abundantly.
-        But You have to follow below SYSTEM PROMPT
-        
-        SYSTEM PROMPT: {system_prompt}
-        
-        CONTEXT: {context} 
-        
-        QUESTION: {question}
-        
-        YOUR ANSWER:
-        """
+    system_prompt_template = """
+    You're a helpful AI assistant tasked to answer the user's questions.  
+    If you don't know the answer, don't say that you don't know, try to make up an answer abundantly.
+    But You have to follow below SYSTEM PROMPT
+    
+    SYSTEM PROMPT: {system_prompt}
+    
+    CONTEXT: {context} 
+    
+    QUESTION: {question}
+    
+    YOUR ANSWER:
+    """
 
-        formatted_template = system_prompt_template.format(
-            system_prompt=human_input["system_prompt"],
-            context="{context}",
-            question="{question}"
-        )
+    formatted_template = system_prompt_template.format(
+        system_prompt=human_input["system_prompt"],
+        context="{context}",
+        question="{question}"
+    )
 
-        QA_PROMPT = PromptTemplate(
-            template=formatted_template, input_variables=["system_prompt", "context", "question"]
-        )
+    QA_PROMPT = PromptTemplate(
+        template=formatted_template, input_variables=["system_prompt", "context", "question"]
+    )
 
-        prompt = PromptTemplate.from_template(template)
+    prompt = PromptTemplate.from_template(template)
 
-        memory = ConversationSummaryBufferMemory(
-            memory_key="chat_history",
-            llm=llm,
-            return_messages=True,
-            input_key="question",
-        )
+    memory = ConversationSummaryBufferMemory(
+        memory_key="chat_history",
+        llm=llm,
+        return_messages=True,
+        input_key="question",
+    )
 
-        qa = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            condense_question_prompt=prompt,
-            memory=memory,
-            combine_docs_chain_kwargs={"prompt": QA_PROMPT},
-            callbacks=[StreamingStdOutCallbackHandler()],
-        )
+    qa = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=retriever,
+        condense_question_prompt=prompt,
+        memory=memory,
+        combine_docs_chain_kwargs={"prompt": QA_PROMPT},
+        callbacks=[StreamingStdOutCallbackHandler()],
+    )
 
-        response = qa.invoke({
+    response = qa(
+        {
             "chat_history": "",
             "question": human_input["human_input"],
-        })
-        
-        logging.info(f"Generated response: {response['answer']}")
-        return response["answer"]
-    except Exception as e:
-        logging.error(f"Error processing message: {e}")
-        return "Sorry, I encountered an error processing your request."
+        }
+    )
+    
+    logging.info(f"Generated response: {response['answer']}")
+    return response["answer"]
 
-async def run_long_task(turn_context, human_input):
-    try:
-        response = await process_message(human_input)
-        await turn_context.send_activity(response)
-    except Exception as e:
-        logging.error(f"Error in long task: {e}")
-        await turn_context.send_activity("Sorry, I encountered an error processing your request.")
-
-@app.route("/api/message", methods=["POST"])
+@app.route("/api/message", methods=["POST"])  # Note the singular 'message'
 def messages():
     try:
         body = request.json
@@ -147,12 +132,9 @@ def messages():
         if activity.type == ActivityTypes.message:
             async def aux(turn_context: TurnContext):
                 user_input = activity.text
-                human_input = {"human_input": user_input, "system_prompt": "Your system prompt"}
-                # Send an immediate response to avoid timeout
-                await turn_context.send_activity("Processing your request, please wait...")
-                # Schedule the long-running task to run asynchronously
-                loop.create_task(run_long_task(turn_context, human_input))
-
+                human_input = {"human_input": user_input, "system_prompt": ""}
+                response = await process_message(human_input)
+                await turn_context.send_activity(response)
             loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         elif activity.type == ActivityTypes.conversation_update:
             logging.info("Handling conversation update activity")
@@ -160,10 +142,9 @@ def messages():
                 if activity.members_added:
                     for member in activity.members_added:
                         if member.id != activity.recipient.id:
-                            await turn_context.send_activity(f"Welcome {member.name or 'User'}!")
+                            await turn_context.send_activity(f"Welcome {member.name or ''}!")
             loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         else:
-            logging.error(f"Invalid activity type or missing activity. Body: {body}")
             raise TypeError("Invalid activity type or missing activity")
 
         return jsonify({"status": "success"}), 201
