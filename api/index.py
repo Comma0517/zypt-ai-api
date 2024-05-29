@@ -54,7 +54,7 @@ retriever = vectorstore.as_retriever()
 # Flask app for bot adapter
 app = Flask(__name__)
 
-def process_message_sync(human_input):
+async def process_message(human_input):
     try:
         logging.info(f"Processing message: {human_input}")
 
@@ -140,8 +140,16 @@ def messages():
             async def aux(turn_context: TurnContext):
                 user_input = activity.text
                 human_input = {"human_input": user_input, "system_prompt": "Your system prompt"}
-                response = process_message_sync(human_input)
-                await turn_context.send_activity(response)
+                # Send an immediate response to avoid timeout
+                await turn_context.send_activity("Processing your request, please wait...")
+                
+                # Schedule the long-running task to run asynchronously
+                async def run_long_task():
+                    response = process_message(human_input)
+                    await turn_context.send_activity(response)
+                
+                loop.create_task(run_long_task())
+
             loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         elif activity.type == ActivityTypes.conversation_update:
             logging.info("Handling conversation update activity")
