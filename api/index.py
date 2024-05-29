@@ -126,7 +126,7 @@ def messages():
         auth_header = request.headers.get("Authorization", "")
 
         if not activity or activity.type != ActivityTypes.message:
-            raise TypeError("Invalid activity type or missing activity")
+            raise TypeError(f"Invalid activity type or missing activity. Body: {body}")
 
         async def aux(turn_context: TurnContext):
             if activity.type == ActivityTypes.message:
