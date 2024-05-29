@@ -124,6 +124,14 @@ async def process_message(human_input):
         logging.error(f"Error processing message: {e}")
         return "Sorry, I encountered an error processing your request."
 
+async def run_long_task(turn_context, human_input):
+    try:
+        response = await process_message(human_input)
+        await turn_context.send_activity(response)
+    except Exception as e:
+        logging.error(f"Error in long task: {e}")
+        await turn_context.send_activity("Sorry, I encountered an error processing your request.")
+
 @app.route("/api/message", methods=["POST"])
 def messages():
     try:
@@ -142,13 +150,8 @@ def messages():
                 human_input = {"human_input": user_input, "system_prompt": "Your system prompt"}
                 # Send an immediate response to avoid timeout
                 await turn_context.send_activity("Processing your request, please wait...")
-                
                 # Schedule the long-running task to run asynchronously
-                async def run_long_task():
-                    response = process_message(human_input)
-                    await turn_context.send_activity(response)
-                
-                loop.create_task(run_long_task())
+                loop.create_task(run_long_task(turn_context, human_input))
 
             loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         elif activity.type == ActivityTypes.conversation_update:
