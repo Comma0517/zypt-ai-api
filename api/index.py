@@ -1,4 +1,5 @@
 import os
+import asyncio
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from botbuilder.core import BotFrameworkAdapter, BotFrameworkAdapterSettings, TurnContext
@@ -125,23 +126,24 @@ def messages():
         logging.info(f"Deserialized activity: {activity}")
         auth_header = request.headers.get("Authorization", "")
 
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         if activity.type == ActivityTypes.message:
             async def aux(turn_context: TurnContext):
                 user_input = activity.text
                 human_input = {"human_input": user_input, "system_prompt": "Your system prompt"}
                 response = await process_message(human_input)
                 await turn_context.send_activity(response)
-            adapter.process_activity(activity, auth_header, aux)
+            loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         elif activity.type == ActivityTypes.conversation_update:
             logging.info("Handling conversation update activity")
-            # Handle conversation update activity if needed
-            # For example, you might want to send a welcome message to new members added to the conversation
             async def aux(turn_context: TurnContext):
                 if activity.members_added:
                     for member in activity.members_added:
                         if member.id != activity.recipient.id:
                             await turn_context.send_activity(f"Welcome {member.name or 'User'}!")
-            adapter.process_activity(activity, auth_header, aux)
+            loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         else:
             logging.error(f"Invalid activity type or missing activity. Body: {body}")
             raise TypeError("Invalid activity type or missing activity")
