@@ -1,7 +1,7 @@
 aiohttp
-flask
 python-dotenv
 pymongo
 botbuilder-core
 langchain_openai
 langchain_community
+quart
