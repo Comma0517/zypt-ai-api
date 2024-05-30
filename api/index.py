@@ -138,7 +138,8 @@ async def messages(request: Request):
             async def aux(turn_context: TurnContext):
                 user_input = activity.text
                 human_input = {"human_input": user_input, "system_prompt": "Your system prompt"}
-                response = process_message_sync(human_input)
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(None, process_message_sync, human_input)
                 await turn_context.send_activity(response)
             await adapter.process_activity(activity, auth_header, aux)
         elif activity.type == ActivityTypes.conversation_update:
