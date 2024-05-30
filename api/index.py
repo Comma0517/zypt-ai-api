@@ -13,7 +13,6 @@ from langchain_community.vectorstores import AzureCosmosDBVectorSearch
 from pymongo import MongoClient
 import logging
 
-# Load environment variables
 load_dotenv()
 
 # Environment variables
@@ -23,7 +22,6 @@ CONNECTION_STRING = os.getenv("DB_CONNECTION_STRING")
 MICROSOFT_APP_ID = os.getenv("MICROSOFT_APP_ID")
 MICROSOFT_APP_PASSWORD = os.getenv("MICROSOFT_APP_PASSWORD")
 
-# Validate environment variables
 if not all([AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, CONNECTION_STRING, MICROSOFT_APP_ID, MICROSOFT_APP_PASSWORD]):
     raise ValueError("One or more environment variables are missing")
 
@@ -56,7 +54,7 @@ retriever = vectorstore.as_retriever()
 # Flask app for bot adapter
 app = Flask(__name__)
 
-async def process_message_async(human_input):
+def process_message_sync(human_input):
     try:
         logging.info(f"Processing message: {human_input}")
 
@@ -115,7 +113,7 @@ async def process_message_async(human_input):
             callbacks=[StreamingStdOutCallbackHandler()],
         )
 
-        response = await qa.invoke_async({
+        response = qa.invoke({
             "chat_history": "",
             "question": human_input["human_input"],
         })
@@ -127,21 +125,24 @@ async def process_message_async(human_input):
         return "Sorry, I encountered an error processing your request."
 
 @app.route("/api/message", methods=["POST"])
-async def messages():
+def messages():
     try:
-        body = await request.get_json()
+        body = request.json
         logging.info(f"Received request body: {body}")
         activity = Activity().deserialize(body)
         logging.info(f"Deserialized activity: {activity}")
         auth_header = request.headers.get("Authorization", "")
 
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         if activity.type == ActivityTypes.message:
             async def aux(turn_context: TurnContext):
                 user_input = activity.text
                 human_input = {"human_input": user_input, "system_prompt": "Your system prompt"}
-                response = await process_message_async(human_input)
+                response = process_message_sync(human_input)
                 await turn_context.send_activity(response)
-            await adapter.process_activity(activity, auth_header, aux)
+            loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         elif activity.type == ActivityTypes.conversation_update:
             logging.info("Handling conversation update activity")
             async def aux(turn_context: TurnContext):
@@ -149,7 +150,7 @@ async def messages():
                     for member in activity.members_added:
                         if member.id != activity.recipient.id:
                             await turn_context.send_activity(f"Welcome {member.name or 'User'}!")
-            await adapter.process_activity(activity, auth_header, aux)
+            loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         else:
             logging.error(f"Invalid activity type or missing activity. Body: {body}")
             raise TypeError("Invalid activity type or missing activity")
@@ -161,7 +162,7 @@ async def messages():
 
 # Health check endpoint
 @app.route("/")
-async def health_check():
+def health_check():
     return "Hello World!"
 
 if __name__ == "__main__":
