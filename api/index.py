@@ -1,8 +1,7 @@
 import os
 import asyncio
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
+from flask import Flask, request, jsonify
 from botbuilder.core import BotFrameworkAdapter, BotFrameworkAdapterSettings, TurnContext
 from botbuilder.schema import Activity, ActivityTypes
 from langchain.prompts import PromptTemplate
@@ -52,8 +51,8 @@ vectorstore = AzureCosmosDBVectorSearch(
 
 retriever = vectorstore.as_retriever()
 
-# FastAPI app for bot adapter
-app = FastAPI()
+# Flask app for bot adapter
+app = Flask(__name__)
 
 def process_message_sync(human_input):
     try:
@@ -125,22 +124,25 @@ def process_message_sync(human_input):
         logging.error(f"Error processing message: {e}")
         return "Sorry, I encountered an error processing your request."
 
-@app.post("/api/message")
-async def messages(request: Request):
+@app.route("/api/message", methods=["POST"])
+def messages():
     try:
-        body = await request.json()
+        body = request.json
         logging.info(f"Received request body: {body}")
         activity = Activity().deserialize(body)
         logging.info(f"Deserialized activity: {activity}")
         auth_header = request.headers.get("Authorization", "")
 
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
         if activity.type == ActivityTypes.message:
             async def aux(turn_context: TurnContext):
                 user_input = activity.text
                 human_input = {"human_input": user_input, "system_prompt": "Your system prompt"}
-                response = await asyncio.get_event_loop().run_in_executor(None, process_message_sync, human_input)
+                response = process_message_sync(human_input)
                 await turn_context.send_activity(response)
-            await adapter.process_activity(activity, auth_header, aux)
+            loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         elif activity.type == ActivityTypes.conversation_update:
             logging.info("Handling conversation update activity")
             async def aux(turn_context: TurnContext):
@@ -148,24 +150,23 @@ async def messages(request: Request):
                     for member in activity.members_added:
                         if member.id != activity.recipient.id:
                             await turn_context.send_activity(f"Welcome {member.name or 'User'}!")
-            await adapter.process_activity(activity, auth_header, aux)
+            loop.run_until_complete(adapter.process_activity(activity, auth_header, aux))
         else:
             logging.error(f"Invalid activity type or missing activity. Body: {body}")
             raise TypeError("Invalid activity type or missing activity")
 
-        return JSONResponse(content={"status": "success"}, status_code=201)
+        return jsonify({"status": "success"}), 201
     except Exception as e:
         logging.error(f"Error handling request: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return jsonify({"error": str(e)}), 500
 
 # Health check endpoint
-@app.get("/")
+@app.route("/")
 def health_check():
     return "Hello World!"
 
 if __name__ == "__main__":
-    import uvicorn
     # Set up logging
     logging.basicConfig(level=logging.INFO)
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000)

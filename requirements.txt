@@ -4,5 +4,4 @@ pymongo
 botbuilder-core
 langchain_openai
 langchain_community
-fastapi
-uvicorn
+quart
